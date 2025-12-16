@@ -10,6 +10,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use CloudinaryLabs\CloudinaryLaravel\Facades\Cloudinary;
 
 class AbsensiController extends Controller
 {
@@ -122,27 +123,71 @@ class AbsensiController extends Controller
         // ================================
         // Upload video ke Lokal
         // ================================
+        // $videoUrl = null;
+
+        // try {
+        //     if ($request->hasFile('video_user')) {
+        //         // simpan di disk public
+        //         $path = $request->file('video_user')->store('absensi/video', 'public');
+        //         $videoUrl = Storage::url($path);
+        //     } elseif ($request->filled('video_base64')) {
+        //         $videoData = base64_decode($request->video_base64);
+        //         $fileName = uniqid() . '.mp4';
+        //         $filePath = 'absensi/' . $fileName;
+        //         Storage::disk('public')->put($filePath, $videoData);
+        //         $videoUrl = Storage::url($filePath);
+        //     }
+        // } catch (\Exception $e) {
+        //     Log::error('Upload video gagal: ' . $e->getMessage());
+
+        //     return response()->json([
+        //         'status'  => false,
+        //         'message' => 'Upload video gagal: ' . $e->getMessage(),
+        //     ], 500);
+        // }
+
+        // ================================
+        // Upload video ke Cloudinary
+        // ================================
         $videoUrl = null;
+        $videoPublicId = null;
 
         try {
             if ($request->hasFile('video_user')) {
-                // simpan di disk public
-                $path = $request->file('video_user')->store('absensi/video', 'public');
-                $videoUrl = Storage::url($path);
-            } elseif ($request->filled('video_base64')) {
-                $videoData = base64_decode($request->video_base64);
-                $fileName = uniqid() . '.mp4';
-                $filePath = 'absensi/' . $fileName;
-                Storage::disk('public')->put($filePath, $videoData);
-                $videoUrl = Storage::url($filePath);
-            }
 
+                $upload = Cloudinary::uploadVideo(
+                    $request->file('video_user')->getRealPath(),
+                    [
+                        'folder' => 'absensi/video',
+                        'resource_type' => 'video',
+                        'timeout' => 120,
+                    ]
+                );
+
+                $videoUrl = $upload->getSecurePath();
+                $videoPublicId = $upload->getPublicId();
+            } elseif ($request->filled('video_base64')) {
+
+                $upload = Cloudinary::uploadVideo(
+                    'data:video/mp4;base64,' . $request->video_base64,
+                    [
+                        'folder' => 'absensi/video',
+                        'resource_type' => 'video',
+                        'timeout' => 120,
+                    ]
+                );
+
+                $videoUrl = $upload->getSecurePath();
+                $videoPublicId = $upload->getPublicId();
+            }
         } catch (\Exception $e) {
-            Log::error('Upload video gagal: ' . $e->getMessage());
+            Log::error('Upload video Cloudinary gagal', [
+                'error' => $e->getMessage(),
+            ]);
 
             return response()->json([
                 'status'  => false,
-                'message' => 'Upload video gagal: ' . $e->getMessage(),
+                'message' => 'Upload video gagal',
             ], 500);
         }
 
@@ -225,11 +270,11 @@ class AbsensiController extends Controller
         $dLat = deg2rad($lat2 - $lat1);
         $dLng = deg2rad($lng2 - $lng1);
 
-        $a = sin($dLat/2) * sin($dLat/2) +
-             cos(deg2rad($lat1)) * cos(deg2rad($lat2)) *
-             sin($dLng/2) * sin($dLng/2);
+        $a = sin($dLat / 2) * sin($dLat / 2) +
+            cos(deg2rad($lat1)) * cos(deg2rad($lat2)) *
+            sin($dLng / 2) * sin($dLng / 2);
 
-        $c = 2 * atan2(sqrt($a), sqrt(1-$a));
+        $c = 2 * atan2(sqrt($a), sqrt(1 - $a));
 
         return $earthRadius * $c;
     }

@@ -8,7 +8,8 @@ use App\Models\Tugas;
 use App\Models\Pengaturan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
+// use Illuminate\Support\Facades\Storage;
+use CloudinaryLabs\CloudinaryLaravel\Facades\Cloudinary;
 
 class TugasController extends Controller
 {
@@ -265,9 +266,22 @@ class TugasController extends Controller
         $tugasNama = $tugas->nama_tugas;
         $tugasId = $tugas->id;
 
-        if ($tugas->lampiran) {
-            $filePath = str_replace('/storage/', '', $tugas->lampiran);
-            Storage::disk('public')->delete($filePath);
+        // if ($tugas->lampiran) {
+        //     $filePath = str_replace('/storage/', '', $tugas->lampiran);
+        //     Storage::disk('public')->delete($filePath);
+        // }
+
+        if ($tugas->lampiran_public_id) {
+            $resourceType = match ($tugas->lampiran_type) {
+                'video' => 'video',
+                'image' => 'image',
+                default => 'raw',
+            };
+
+            Cloudinary::destroy(
+                $tugas->lampiran_public_id,
+                ['resource_type' => $resourceType]
+            );
         }
 
         $tugas->delete();
@@ -353,31 +367,88 @@ class TugasController extends Controller
         $tugas->lampiran_lng = $request->lampiran_lng;
 
         // === PROSES UPLOAD ===
+        // if ($request->hasFile('lampiran')) {
+        //     if ($tugas->lampiran) {
+        //         $oldPath = str_replace('/storage/', '', $tugas->lampiran);
+        //         Storage::disk('public')->delete($oldPath);
+        //     }
+
+        //     $file = $request->file('lampiran');
+        //     $ext = strtolower($file->getClientOriginalExtension());
+        //     $folder = match ($ext) {
+        //         'mp4', 'mov', 'avi', '3gp' => 'tugas/videos',
+        //         'jpg', 'jpeg', 'png'       => 'tugas/images',
+        //         default                    => 'tugas/files',
+        //     };
+
+        //     $path = $file->store($folder, 'public');
+        //     $tugas->lampiran = Storage::url($path);
+
+        //     // === CATAT WAKTU UPLOAD & HITUNG KETERLAMBATAN ===
+        //     $now = now();
+        //     $tugas->waktu_upload = $now;
+        //     $tugas->terlambat = $now->gt($tugas->batas_penugasan);
+        //     $tugas->menit_terlambat = $tugas->terlambat
+        //         ? $tugas->batas_penugasan->diffInMinutes($now)
+        //         : 0;
+        //     $tugas->status = "Menunggu Admin";
+        //     $tugas->save();
+        // }
+
+        // === PROSES UPLOAD CLOUDINARY ===
+
         if ($request->hasFile('lampiran')) {
-            if ($tugas->lampiran) {
-                $oldPath = str_replace('/storage/', '', $tugas->lampiran);
-                Storage::disk('public')->delete($oldPath);
+
+            // 🔥 hapus file lama di Cloudinary (kalau ada)
+            if ($tugas->lampiran_public_id) {
+                Cloudinary::destroy(
+                    $tugas->lampiran_public_id,
+                    ['resource_type' => $tugas->lampiran_type === 'video' ? 'video' : 'raw']
+                );
             }
 
             $file = $request->file('lampiran');
             $ext = strtolower($file->getClientOriginalExtension());
-            $folder = match ($ext) {
-                'mp4', 'mov', 'avi', '3gp' => 'tugas/videos',
-                'jpg', 'jpeg', 'png'       => 'tugas/images',
-                default                    => 'tugas/files',
-            };
 
-            $path = $file->store($folder, 'public');
-            $tugas->lampiran = Storage::url($path);
+            $isVideo = in_array($ext, ['mp4', 'mov', 'avi', '3gp']);
+            $isImage = in_array($ext, ['jpg', 'jpeg', 'png', 'webp']);
 
-            // === CATAT WAKTU UPLOAD & HITUNG KETERLAMBATAN ===
+            $folder = $isVideo
+                ? 'tugas/videos'
+                : ($isImage ? 'tugas/images' : 'tugas/files');
+
+            // === UPLOAD KE CLOUDINARY ===
+            $upload = $isVideo
+                ? Cloudinary::uploadVideo(
+                    $file->getRealPath(),
+                    [
+                        'folder' => $folder,
+                        'resource_type' => 'video',
+                        'timeout' => 120,
+                    ]
+                )
+                : Cloudinary::upload(
+                    $file->getRealPath(),
+                    [
+                        'folder' => $folder,
+                        'resource_type' => $isImage ? 'image' : 'raw',
+                    ]
+                );
+
+            // === SIMPAN KE DB (PAKAI FIELD LAMA) ===
+            $tugas->lampiran = $upload->getSecurePath(); // ⬅️ INI KUNCI
+            $tugas->lampiran_public_id = $upload->getPublicId();
+            $tugas->lampiran_type = $isVideo ? 'video' : ($isImage ? 'image' : 'file');
+
+            // === CATAT WAKTU UPLOAD & STATUS ===
             $now = now();
             $tugas->waktu_upload = $now;
             $tugas->terlambat = $now->gt($tugas->batas_penugasan);
             $tugas->menit_terlambat = $tugas->terlambat
                 ? $tugas->batas_penugasan->diffInMinutes($now)
                 : 0;
-            $tugas->status = "Menunggu Admin";
+
+            $tugas->status = 'Menunggu Admin';
             $tugas->save();
         }
 

@@ -21,7 +21,7 @@ return [
         'http://103.161.188.102:80',
         'http://localhost:64644',
         'http://localhost:5173',
-        'https://yellow-frost-7be7.haikaltaufiq4.workers.dev/#/login'
+        'https://yellow-frost-7be7.haikaltaufiq4.workers.dev'
     ],
 
     'allowed_origins_patterns' => [

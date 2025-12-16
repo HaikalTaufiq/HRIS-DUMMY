@@ -3,13 +3,7 @@ set -e
 
 echo "🚀 Starting Laravel container..."
 
-# -----------------------------
-# Debug env vars
-# -----------------------------
 echo "🛠 Debug Environment Variables:"
-# echo "CLOUDINARY_API_KEY = '$CLOUDINARY_API_KEY'"
-# echo "CLOUDINARY_API_SECRET = '$CLOUDINARY_API_SECRET'"
-# echo "CLOUDINARY_CLOUD_NAME = '$CLOUDINARY_CLOUD_NAME'"
 echo "APP_NAME = '$APP_NAME'"
 echo "APP_ENV = '$APP_ENV'"
 echo "DB_DATABASE = '$DB_DATABASE'"
@@ -33,37 +27,23 @@ done
 echo "✅ MySQL siap, lanjut proses Laravel..."
 
 # -----------------------------
-# Install dependencies & cache config
+# Install dependencies
 # -----------------------------
 composer install --no-interaction --optimize-autoloader
-composer dump-autoload -o
+
+# -----------------------------
+# Laravel housekeeping
+# -----------------------------
+php artisan key:generate --force || true
+php artisan migrate --force
 
 php artisan config:clear
-php artisan cache:clear
-php artisan config:cache
+php artisan route:clear
+php artisan view:clear
+php artisan optimize
 
 # -----------------------------
-# Migration & Seed (opsional reset DB)
+# Start Laravel (foreground)
 # -----------------------------
-RESET_DB=true   # ganti ke true kalau mau fresh + seed
-
-if [ "$RESET_DB" = "true" ]; then
-  echo "⚠️ Jalankan migrate:fresh --seed (semua data akan direset)"
-  php artisan migrate:fresh --seed --force
-else
-  echo "✅ Jalankan migrate --force (aman, tanpa reset data)"
-  php artisan migrate --force
-fi
-
-# -----------------------------
-# Jalankan scheduler & Laravel server di background
-# -----------------------------
-echo "🚀 Menjalankan scheduler & Laravel server..."
-php artisan schedule:work --verbose &
-php artisan serve --host=0.0.0.0 --port=8080 &
-
-# -----------------------------
-# Jalankan queue worker di foreground supaya log muncul
-# -----------------------------
-echo "🚀 Menjalankan queue worker..."
-exec php artisan queue:work --tries=3 --sleep=3 --verbose
+echo "🚀 Laravel siap dijalankan"
+exec php artisan serve --host=0.0.0.0 --port=8080
